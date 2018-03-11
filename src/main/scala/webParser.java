@@ -71,7 +71,7 @@ public class webParser//website data parser
                             j+=1;
                         }
                         return result;
-                    } else {
+                    } else { //no link
                         String[] result={pageName};
                         return result;
                     }
