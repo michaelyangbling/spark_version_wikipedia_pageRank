@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class webParser//website data parser
+class webParser//website data parser
          {
     private static  Pattern namePattern;
     private static  Pattern linkPattern;
