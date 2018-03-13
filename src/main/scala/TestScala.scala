@@ -14,10 +14,10 @@ object TestScala {
     }
   }
   def filterDangNodes(in:String,pageSet:Set[String]):Boolean={
-      if (pageSet.contains(in))
-        false
-      else
-        true
+    if (pageSet.contains(in))
+      false
+    else
+      true
   }
   def addDangNodes(in: String):(String,Set[String])={
     (in, Set())
@@ -25,7 +25,7 @@ object TestScala {
   def main(args: Array[String]):Unit= {
     val conf = new SparkConf().setMaster("local").setAppName("My App")
     val sc = new SparkContext(conf)
-    val textFile = sc.textFile("/Users/yzh/Desktop/njtest/input2")
+    val textFile = sc.textFile(args(0))
     val pageLinksPair = textFile.map(webParser.parse)
       .filter(array=>array.length!=0)//eliminate ill-formatted HTMLs
       .map(getPairRdd).persist//convert to pairRDD : ( pageName,set(links) )
@@ -34,8 +34,8 @@ object TestScala {
     val dangleRdd=pageLinksPair.flatMap(pair=>pair._2).
       filter(page=>filterDangNodes(page,setPages)).map(addDangNodes)//filter and add dangling nodes
     val cleanedData=dangleRdd.union(pageLinksPair).reduceByKey((x,y)=>x.++(y))
-    cleanedData.saveAsTextFile("/Users/yzh/Desktop/njtest/output");
-    
+    cleanedData.saveAsTextFile(args(1));
+
     /*print(pageLinksPair.flatMap(pair=>pair._2).count)
     println("-------------")
     println("-------------")
