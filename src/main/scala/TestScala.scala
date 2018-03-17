@@ -2,6 +2,8 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.storage.StorageLevel._
 import java.io._
 import org.apache.spark.broadcast.Broadcast
+//this method store graph as rdd but distribute Pageranks as map to all nodes,
+//optimize running time but use too much memory
 object TestScala {
   def getPairRdd(in:Array[String]) :(String,Set[String])= {
     if (in.length == 1)
@@ -49,27 +51,29 @@ object TestScala {
     var broadcastSet=sc.broadcast(setPages)
     var dangleRdd=pageLinksPair.flatMap(pair=>pair._2).
       filter(page=>filterDangNodes(page,broadcastSet.value)).map(addDangNodes)//filter and add dangling nodes
-    var cleanedData=dangleRdd.union(pageLinksPair).reduceByKey((x,y)=>x.++(y)).persist(MEMORY_AND_DISK) //(String,Set[String])
+    var cleanedData=dangleRdd.union(pageLinksPair).reduceByKey((x,y)=>x.++(y)).persist() //(String,Set[String])
 
     println("data-clean finished")
     //cleanedData is the graph
-    val n=cleanedData.count()
-    var PR=cleanedData.map(x=>(x._1,1.toDouble/n)).collectAsMap().toMap //initial pageRank: map[String,double]
-    var PR0=cleanedData.map(x=>(x._1,0.toDouble)).persist(MEMORY_AND_DISK)
+    val numPages=sc.broadcast(cleanedData.count())
+    var PR=cleanedData.map(x=>(x._1,1.toDouble/numPages.value)).collectAsMap().toMap //initial pageRank: map[String,double]
+    var PR0=cleanedData.map(x=>(x._1,0.toDouble)).persist()
     //the map can fit into the memory
-    val randP=0.15/n //here define probability of random jumping to a website as 0.15
-    var dangNodes=cleanedData.filter(x=>x._2.isEmpty).map(x=>x._1).persist(MEMORY_AND_DISK)//dangling nodes' RDD:String
+    val randP=sc.broadcast(0.15/numPages.value) //here define probability of random jumping to a website as 0.15
+    var dangNodes=cleanedData.filter(x=>x._2.isEmpty).map(x=>x._1).persist()//dangling nodes' RDD:String
     //persist is to keep the RDD for future repeated use
     var dangWeight:Double=0
+    var broadDangWeight:Broadcast[Double]=sc.broadcast(dangWeight)
     var i=1
     var broadcastMap:Broadcast[Map[String,Double]]=null
     while(i<=args(2).toInt) { // iterate pageRank algorithm
       println("iterating")
       broadcastMap=sc.broadcast(PR)
-      dangWeight = dangNodes.map(x => broadcastMap.value(x)).aggregate(0.toDouble)((x, y) => x + y, (x2, y2) => x2 + y2) / n
+      dangWeight = dangNodes.map(x => broadcastMap.value(x)).aggregate(0.toDouble)((x, y) => x + y, (x2, y2) => x2 + y2) / numPages.value
+      broadDangWeight=sc.broadcast(dangWeight)
       PR = cleanedData.flatMap(x => giveRank(x._2, x._1, broadcastMap.value)) //Rdd (String,Double)
         .reduceByKey((x, y) => x + y).union(PR0).reduceByKey((x, y) => x + y)
-        .mapValues(y => (y + randP) * 0.85 + dangWeight).collectAsMap.toMap //update PageRank
+        .mapValues(y => (y + randP.value) * 0.85 + broadDangWeight.value).collectAsMap.toMap //update PageRank
 
       i = i + 1
     }
