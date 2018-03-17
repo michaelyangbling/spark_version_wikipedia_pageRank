@@ -1,6 +1,7 @@
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.storage.StorageLevel._
 import java.io._
+import org.apache.spark.broadcast.Broadcast
 object TestScala {
   def getPairRdd(in:Array[String]) :(String,Set[String])= {
     if (in.length == 1)
@@ -36,8 +37,8 @@ object TestScala {
   }
   def main(args: Array[String]):Unit= {
     println("starting")
-    //val conf = new SparkConf().setMaster("local").setAppName("My App")  //for local run&debug
-    val conf = new SparkConf().setAppName("My App") //for AWS run
+    val conf = new SparkConf().setMaster("local").setAppName("My App")  //for local run&debug
+    //val conf = new SparkConf().setAppName("My App") //for AWS run
     val sc = new SparkContext(conf)
     val textFile = sc.textFile(args(0))
     var pageLinksPair = textFile.map(webParser.parse)
@@ -45,8 +46,9 @@ object TestScala {
       .map(getPairRdd).persist//convert to pairRDD : ( pageName,set(links) ) (String,Set[String])
 
     var setPages=pageLinksPair.countByKey().keySet.toSet //set of provided pages
+    var broadcastSet=sc.broadcast(setPages)
     var dangleRdd=pageLinksPair.flatMap(pair=>pair._2).
-      filter(page=>filterDangNodes(page,setPages)).map(addDangNodes)//filter and add dangling nodes
+      filter(page=>filterDangNodes(page,broadcastSet.value)).map(addDangNodes)//filter and add dangling nodes
     var cleanedData=dangleRdd.union(pageLinksPair).reduceByKey((x,y)=>x.++(y)).persist(MEMORY_AND_DISK) //(String,Set[String])
 
     println("data-clean finished")
@@ -60,16 +62,21 @@ object TestScala {
     //persist is to keep the RDD for future repeated use
     var dangWeight:Double=0
     var i=1
+    var broadcastMap:Broadcast[Map[String,Double]]=null
     while(i<=args(2).toInt) { // iterate pageRank algorithm
       println("iterating")
-      dangWeight = dangNodes.map(x => PR(x)).aggregate(0.toDouble)((x, y) => x + y, (x2, y2) => x2 + y2) / n
-      PR = cleanedData.flatMap(x => giveRank(x._2, x._1, PR)) //Rdd (String,Double)
+      broadcastMap=sc.broadcast(PR)
+      dangWeight = dangNodes.map(x => broadcastMap.value(x)).aggregate(0.toDouble)((x, y) => x + y, (x2, y2) => x2 + y2) / n
+      PR = cleanedData.flatMap(x => giveRank(x._2, x._1, broadcastMap.value)) //Rdd (String,Double)
         .reduceByKey((x, y) => x + y).union(PR0).reduceByKey((x, y) => x + y)
         .mapValues(y => (y + randP) * 0.85 + dangWeight).collectAsMap.toMap //update PageRank
+
       i = i + 1
     }
+    broadcastMap=null
     pageLinksPair=null
     setPages=null
+    broadcastSet=null
     dangleRdd=null
     cleanedData=null
     PR0=null
