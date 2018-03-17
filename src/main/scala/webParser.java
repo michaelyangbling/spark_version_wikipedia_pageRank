@@ -80,7 +80,7 @@ class webParser//website data parser
 
             } catch (Exception e) {
                 e.printStackTrace();
-            }//indicating there should be no such value in RDD
+            }
 
         }
         return new String[0];//indicating there should be no such value in RDD

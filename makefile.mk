@@ -1,17 +1,21 @@
 #seperate control
 #e.x, in order to build jar file, : make -f make.mk build
-
+#for sbt: sbt package
+#for maven: mvn clean package
+#for maven: mvn scala:run -DmainClass=TestScala
 spark="/Users/yzh/Desktop/cour/parallel/spark-2.3.0-bin-hadoop2.7"
 job.name=TestScala
 local.master=local[4]
 app.name=Wiki Page Rank
-jar.name=spark_2.11-0.1.jar
-local.input=input
-local.output=output
+jar.name=/Users/yzh/IdeaProjects/spark/target/scala-2.11/spark_2.11-0.1.jar
+local.input=/Users/yzh/Desktop/njtest/input
+local.output=/Users/yzh/Desktop/njtest/output
 num.iter=10
 k=100
+
+awsJar=spark_2.11-0.1.jar
 aws.input=workFold/input
-aws.output=
+aws.output=output
 aws.bucket.name=michaelyangcs
 aws.release.label=emr-5.11.1
 aws.instance.type=m4.large
@@ -37,11 +41,10 @@ awsrun:
 		--release-label ${aws.release.label} \
 		--instance-groups '[{"InstanceCount":${aws.num.nodes},"InstanceGroupType":"CORE","InstanceType":"${aws.instance.type}"},{"InstanceCount":1,"InstanceGroupType":"MASTER","InstanceType":"${aws.instance.type}"}]' \
 	    --applications Name=Hadoop Name=Spark \
-		--steps Type=CUSTOM_JAR,Name="${app.name}",Jar="command-runner.jar",ActionOnFailure=TERMINATE_CLUSTER,Args=["spark-submit","--deploy-mode","cluster","--class","${job.name}","s3://${aws.bucket.name}/${jar.name}","s3://${aws.bucket.name}/${aws.input}","s3://${aws.bucket.name}/${aws.output}","${num.iter}","${k}"] \
+		--steps Type=CUSTOM_JAR,Name="${app.name}",Jar="command-runner.jar",ActionOnFailure=TERMINATE_CLUSTER,Args=["spark-submit","--deploy-mode","cluster","--class","${job.name}","s3://${aws.bucket.name}/${awsJar}","s3://${aws.bucket.name}/${aws.input}","s3://${aws.bucket.name}/${aws.output}","${num.iter}","${k}"] \
 		--log-uri s3://${aws.bucket.name}/${aws.log.dir} \
-		--service-role EMR_DefaultRole \
-		--ec2-attributes InstanceProfile=EMR_EC2_DefaultRole,SubnetId=subnet-520b7f0f \
-		--region us-east-1 \
+		--use-default-roles \
+		--ec2-attributes SubnetId=subnet-520b7f0f \
 		--enable-debugging \
 		--auto-terminate
 
